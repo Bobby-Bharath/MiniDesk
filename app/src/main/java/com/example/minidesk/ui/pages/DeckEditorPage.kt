@@ -1,257 +1,525 @@
 package com.example.minidesk.ui.pages
 
-import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.minidesk.data.settings.ColorGraph
+import androidx.compose.ui.window.Dialog
 import com.example.minidesk.data.settings.MiniDeskPreferences
 import com.example.minidesk.data.settings.MiniDeskSettingsRepository
 import com.example.minidesk.data.settings.ToolShape
-import com.example.minidesk.deck.WidgetRepository
+import com.example.minidesk.data.settings.defaultMiniToolSettings
+
+data class MiniToolSpec(
+    val id: String,
+    val name: String,
+    val desc: String,
+    val glyph: String,
+    val hasRing: Boolean = false
+)
+
+val ALL_MINI_TOOL_SPECS = listOf(
+    MiniToolSpec("volume", "Volume", "Media or ring stream dial", "VOL", hasRing = true),
+    MiniToolSpec("brightness", "Brightness", "Display level & auto toggle", "LUX", hasRing = true),
+    MiniToolSpec("media", "Media Controls", "Play, pause, and skip", "▶"),
+    MiniToolSpec("deck_btn", "Command Deck", "Expand to full Bento deck", "⊞"),
+    MiniToolSpec("torch", "Torch", "LED flashlight toggle", "☀"),
+    MiniToolSpec("timer", "Timer", "Quick countdown & stopwatch", "⏱", hasRing = true),
+    MiniToolSpec("eyedropper", "Eyedropper", "One-frame color sampler", "◎"),
+    MiniToolSpec("rotate", "Auto-Rotate", "Orientation lock toggle", "↻")
+)
+
+val COMMAND_DECK_MODULES = listOf(
+    Triple("audio", "Audio Streams & Output", "Per-stream sliders and system output switcher"),
+    Triple("connectivity", "Connectivity", "Wi-Fi and Bluetooth panel shortcuts"),
+    Triple("scratchpad", "Scratchpad", "Quick notes with auto-save"),
+    Triple("clipboard", "Clipboard Vault", "Encrypted clip history and pinned items"),
+    Triple("eyedropper_mod", "Screen Studio", "One-frame MediaProjection eyedropper"),
+    Triple("search", "App Search", "In-memory app and shortcut launcher")
+)
 
 @Composable
 fun DeckEditorPage(
-    settingsRepo: MiniDeskSettingsRepository,
     prefs: MiniDeskPreferences,
-    modifier: Modifier = Modifier
+    settingsRepo: MiniDeskSettingsRepository
 ) {
-    val context = LocalContext.current
-    var activeSubTab by remember { mutableIntStateOf(0) } // 0 = MiniDeck, 1 = Command Deck
     val cg = prefs.colorGraph
+    val boxShape = prefs.boxCornerShape()
+    val btnShape = prefs.buttonCornerShape()
+    val itemShape = prefs.resolveToolShape()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Sub-Navbar + Save Button
+    var selectedSubTab by remember { mutableIntStateOf(0) } // 0 = MiniDeck, 1 = Command Deck
+    var editingToolId by remember { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+
+        // Secondary Navbar: MiniDeck | Command Deck
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .clip(boxShape)
+                .background(Color(cg.surface))
+                .border(1.dp, Color(cg.border), boxShape)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = Color(cg.surface),
-                border = BorderStroke(1.dp, Color(cg.border))
-            ) {
-                Row(modifier = Modifier.padding(2.dp)) {
-                    Surface(
-                        onClick = { activeSubTab = 0 },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (activeSubTab == 0) Color(cg.primarySolid) else Color.Transparent,
-                        contentColor = if (activeSubTab == 0) Color(cg.primaryText) else Color(cg.textSecondary)
-                    ) {
-                        Text("MiniDeck", fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    }
-
-                    Surface(
-                        onClick = { activeSubTab = 1 },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (activeSubTab == 1) Color(cg.primarySolid) else Color.Transparent,
-                        contentColor = if (activeSubTab == 1) Color(cg.primaryText) else Color(cg.textSecondary)
-                    ) {
-                        Text("Command Deck", fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                    }
+            listOf("MiniDeck", "Command Deck").forEachIndexed { idx, label ->
+                val active = selectedSubTab == idx
+                Box(
+                    modifier = Modifier
+                        .clip(btnShape)
+                        .background(if (active) cg.primaryBrush() else SolidColor(Color.Transparent))
+                        .clickable { selectedSubTab = idx }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = label,
+                        color = if (active) Color(cg.primaryText) else Color(cg.textSecondary),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
-            }
-
-            Surface(
-                onClick = { Toast.makeText(context, "Deck layout saved", Toast.LENGTH_SHORT).show() },
-                shape = RoundedCornerShape(8.dp),
-                color = Color(cg.primarySolid),
-                contentColor = Color(cg.primaryText)
-            ) {
-                Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
             }
         }
 
-        if (activeSubTab == 0) {
-            // SUBPAGE A: MINIDECK MANAGER
+        if (selectedSubTab == 0) {
+            // ================= MINIDECK MANAGER =================
 
-            // Live MiniBar Preview Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(prefs.globalRadiusDp.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(cg.surface)),
-                border = BorderStroke(0.5.dp, Color(cg.border))
+            // 1. Live Uniform MiniBar Preview
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(boxShape)
+                    .background(Color(cg.surface))
+                    .border(1.dp, Color(cg.border), boxShape)
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("MiniBar Preview", color = Color(cg.textSecondary), fontSize = 11.sp)
-                    Spacer(modifier = Modifier.height(10.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("MiniBar Live Preview", color = Color(cg.textSecondary), fontSize = 11.sp)
 
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(cg.bgSolid),
-                        border = BorderStroke(1.dp, Color(cg.border))
+                    val spineShape = when (prefs.toolShape) {
+                        ToolShape.CIRCLE -> RoundedCornerShape(32.dp)
+                        ToolShape.SQUIRCLE -> RoundedCornerShape(22.dp)
+                        ToolShape.GLOBAL -> RoundedCornerShape((prefs.globalRadiusDp + 6).coerceIn(8, 32).dp)
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .width(56.dp)
+                            .clip(spineShape)
+                            .background(cg.backgroundBrush())
+                            .border(1.dp, Color(cg.border), spineShape)
+                            .padding(vertical = 10.dp, horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        // Top M Badge
+                        Box(
+                            modifier = Modifier.size(38.dp).clip(itemShape).background(cg.primaryBrush()),
+                            contentAlignment = Alignment.Center
                         ) {
-                            // Top M Badge
-                            Surface(
-                                modifier = Modifier.size(36.dp),
-                                shape = when (prefs.toolShape) {
-                                    ToolShape.CIRCLE -> CircleShape
-                                    ToolShape.SQUIRCLE -> RoundedCornerShape(10.dp)
-                                    ToolShape.GLOBAL -> RoundedCornerShape((prefs.globalRadiusDp * 0.625f).dp)
-                                },
-                                color = Color(cg.primarySolid)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("M", color = Color(cg.primaryText), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
+                            Text("M", color = Color(cg.primaryText), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
 
-                            // Dynamic Tool Slots
-                            listOf("VOL", "LUX", "▶", "⊞").take(prefs.toolSlotsLimit).forEach { toolIcon ->
-                                Surface(
-                                    modifier = Modifier.size(36.dp),
-                                    shape = when (prefs.toolShape) {
-                                        ToolShape.CIRCLE -> CircleShape
-                                        ToolShape.SQUIRCLE -> RoundedCornerShape(10.dp)
-                                        ToolShape.GLOBAL -> RoundedCornerShape((prefs.globalRadiusDp * 0.625f).dp)
-                                    },
-                                    color = Color(cg.surface),
-                                    border = BorderStroke(1.dp, if (prefs.showRadialRings && (toolIcon == "VOL" || toolIcon == "LUX")) Color(cg.primarySolid) else Color(cg.border))
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(toolIcon, color = Color(cg.textPrimary), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                    }
-                                }
-                            }
-
-                            // Chevron Collapse
-                            Surface(
-                                modifier = Modifier.size(28.dp),
-                                shape = CircleShape,
-                                color = Color(cg.secondary)
+                        // Active Tool Slots
+                        prefs.activeMiniToolIds.take(prefs.toolSlotsLimit).forEach { id ->
+                            val spec = ALL_MINI_TOOL_SPECS.firstOrNull { it.id == id } ?: return@forEach
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(itemShape)
+                                    .background(Color(cg.secondary))
+                                    .border(
+                                        width = if (spec.hasRing && prefs.showRadialRings) 1.5.dp else 1.dp,
+                                        color = if (spec.hasRing && prefs.showRadialRings) Color(cg.primarySolid) else Color(cg.border),
+                                        shape = itemShape
+                                    ),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("›", color = Color(cg.textSecondary), fontSize = 12.sp)
-                                }
+                                Text(spec.glyph, color = Color(cg.textPrimary), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                             }
+                        }
+
+                        // Dock Chevron
+                        Box(
+                            modifier = Modifier.size(26.dp).clip(itemShape).background(Color(cg.surface)).border(1.dp, Color(cg.border), itemShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("›", color = Color(cg.textSecondary), fontSize = 12.sp)
                         }
                     }
                 }
             }
 
-            // Slot Capacity & Uniformity Controls
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(prefs.globalRadiusDp.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(cg.surface)),
-                border = BorderStroke(0.5.dp, Color(cg.border))
+            // 2. Slot Capacity & Uniform Shape Controls
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(boxShape)
+                    .background(Color(cg.surface))
+                    .border(1.dp, Color(cg.border), boxShape)
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Tool Slots Counter (-/+)
+                // Tool Slots Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Tool Slots", color = Color(cg.textPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("Maximum visible tools in MiniBar", color = Color(cg.textSecondary), fontSize = 12.sp)
+                    }
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .clip(btnShape)
+                            .background(Color(cg.secondary))
+                            .border(1.dp, Color(cg.border), btnShape)
+                            .padding(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text("Tool Slots", color = Color(cg.textPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("Maximum visible tools in MiniBar", color = Color(cg.textSecondary), fontSize = 12.sp)
-                        }
+                        Box(
+                            modifier = Modifier.size(28.dp).clickable {
+                                if (prefs.toolSlotsLimit > 2) {
+                                    val newLimit = prefs.toolSlotsLimit - 1
+                                    settingsRepo.updatePreferences {
+                                        it.copy(
+                                            toolSlotsLimit = newLimit,
+                                            activeMiniToolIds = it.activeMiniToolIds.take(newLimit)
+                                        )
+                                    }
+                                }
+                            },
+                            contentAlignment = Alignment.Center
+                        ) { Text("−", color = Color(cg.textPrimary), fontSize = 14.sp) }
 
-                        Surface(
-                            shape = RoundedCornerShape((prefs.globalRadiusDp * 0.625f).dp),
-                            color = Color(cg.secondary),
-                            border = BorderStroke(1.dp, Color(cg.border))
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("-", color = Color(cg.textPrimary), fontSize = 14.sp, modifier = Modifier.clickable { if (prefs.toolSlotsLimit > 2) settingsRepo.updatePreferences { it.copy(toolSlotsLimit = it.toolSlotsLimit - 1) } }.padding(horizontal = 10.dp, vertical = 4.dp))
-                                Text("${prefs.toolSlotsLimit}", color = Color(cg.textPrimary), fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 6.dp))
-                                Text("+", color = Color(cg.textPrimary), fontSize = 14.sp, modifier = Modifier.clickable { if (prefs.toolSlotsLimit < 8) settingsRepo.updatePreferences { it.copy(toolSlotsLimit = it.toolSlotsLimit + 1) } }.padding(horizontal = 10.dp, vertical = 4.dp))
+                        Text(
+                            text = "${prefs.toolSlotsLimit}",
+                            color = Color(cg.textPrimary),
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(horizontal = 10.dp)
+                        )
+
+                        Box(
+                            modifier = Modifier.size(28.dp).clickable {
+                                if (prefs.toolSlotsLimit < 8) {
+                                    settingsRepo.updatePreferences { it.copy(toolSlotsLimit = it.toolSlotsLimit + 1) }
+                                }
+                            },
+                            contentAlignment = Alignment.Center
+                        ) { Text("+", color = Color(cg.textPrimary), fontSize = 14.sp) }
+                    }
+                }
+
+                HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+
+                // Uniform Tool Shape Selector
+                Column(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column {
+                        Text("Uniform Tool Shape", color = Color(cg.textPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("Keep every dial and button consistent", color = Color(cg.textSecondary), fontSize = 12.sp)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            ToolShape.CIRCLE to "Circle",
+                            ToolShape.SQUIRCLE to "Squircle",
+                            ToolShape.GLOBAL to "Global"
+                        ).forEach { (shapeEnum, label) ->
+                            val selected = prefs.toolShape == shapeEnum
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(btnShape)
+                                    .background(if (selected) cg.primaryBrush() else SolidColor(Color(cg.secondary)))
+                                    .border(1.dp, Color(cg.border), btnShape)
+                                    .clickable { settingsRepo.updatePreferences { it.copy(toolShape = shapeEnum) } }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (selected) Color(cg.primaryText) else Color(cg.textSecondary),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
                         }
                     }
+                }
 
-                    Surface(modifier = Modifier.fillMaxWidth().height(0.5.dp), color = Color(cg.border)) {}
+                HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
 
-                    // Uniform Tool Shape
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Uniform Tool Shape", color = Color(cg.textPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text("Keep every dial and button consistent", color = Color(cg.textSecondary), fontSize = 12.sp)
-                        Spacer(modifier = Modifier.height(2.dp))
+                // Radial Rings Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Radial Progress Rings", color = Color(cg.textPrimary), fontSize = 14.sp)
+                        Text("Show level progress on Volume & Brightness", color = Color(cg.textSecondary), fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = prefs.showRadialRings,
+                        onCheckedChange = { enabled -> settingsRepo.updatePreferences { it.copy(showRadialRings = enabled) } },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(cg.primaryText),
+                            checkedTrackColor = Color(cg.primarySolid),
+                            uncheckedThumbColor = Color(cg.textSecondary),
+                            uncheckedTrackColor = Color(cg.secondary)
+                        )
+                    )
+                }
+            }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(ToolShape.CIRCLE to "Circle", ToolShape.SQUIRCLE to "Squircle", ToolShape.GLOBAL to "Global").forEach { (shape, label) ->
-                                val isSelected = prefs.toolShape == shape
-                                Surface(
-                                    onClick = { settingsRepo.updatePreferences { it.copy(toolShape = shape) } },
-                                    modifier = Modifier.weight(1f).height(32.dp),
-                                    shape = RoundedCornerShape((prefs.globalRadiusDp * 0.625f).dp),
-                                    color = if (isSelected) Color(cg.primarySolid) else Color(cg.secondary),
-                                    contentColor = if (isSelected) Color(cg.primaryText) else Color(cg.textSecondary),
-                                    border = BorderStroke(1.dp, Color(cg.border))
+            // 3. Active MiniBar Tools (Reorder, Configure Settings, Remove)
+            Text(
+                text = "Active Tools (${prefs.activeMiniToolIds.size}/${prefs.toolSlotsLimit})",
+                color = Color(cg.textSecondary),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(boxShape)
+                    .background(Color(cg.surface))
+                    .border(1.dp, Color(cg.border), boxShape)
+            ) {
+                if (prefs.activeMiniToolIds.isEmpty()) {
+                    Box(modifier = Modifier.padding(18.dp)) {
+                        Text("No active tools. Add tools below.", color = Color(cg.textSecondary), fontSize = 12.sp)
+                    }
+                } else {
+                    prefs.activeMiniToolIds.forEachIndexed { idx, id ->
+                        val spec = ALL_MINI_TOOL_SPECS.firstOrNull { it.id == id } ?: return@forEachIndexed
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(itemShape)
+                                        .background(Color(cg.secondary))
+                                        .border(1.dp, Color(cg.border), itemShape),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    }
+                                    Text(spec.glyph, color = Color(cg.textPrimary), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+                                Column {
+                                    Text(spec.name, color = Color(cg.textPrimary), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(spec.desc, color = Color(cg.textSecondary), fontSize = 11.sp)
+                                }
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // Move Up
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(btnShape)
+                                        .background(Color(cg.secondary))
+                                        .border(1.dp, Color(cg.border), btnShape)
+                                        .clickable(enabled = idx > 0) {
+                                            val list = prefs.activeMiniToolIds.toMutableList()
+                                            val tmp = list[idx - 1]; list[idx - 1] = list[idx]; list[idx] = tmp
+                                            settingsRepo.updatePreferences { it.copy(activeMiniToolIds = list) }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("↑", color = if (idx > 0) Color(cg.textPrimary) else Color(cg.textSecondary).copy(alpha = 0.3f), fontSize = 12.sp)
+                                }
+
+                                // Move Down
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(btnShape)
+                                        .background(Color(cg.secondary))
+                                        .border(1.dp, Color(cg.border), btnShape)
+                                        .clickable(enabled = idx < prefs.activeMiniToolIds.lastIndex) {
+                                            val list = prefs.activeMiniToolIds.toMutableList()
+                                            val tmp = list[idx + 1]; list[idx + 1] = list[idx]; list[idx] = tmp
+                                            settingsRepo.updatePreferences { it.copy(activeMiniToolIds = list) }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("↓", color = if (idx < prefs.activeMiniToolIds.lastIndex) Color(cg.textPrimary) else Color(cg.textSecondary).copy(alpha = 0.3f), fontSize = 12.sp)
+                                }
+
+                                // Per-Tool Settings Button
+                                Box(
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .clip(btnShape)
+                                        .background(Color(cg.secondary))
+                                        .border(1.dp, Color(cg.border), btnShape)
+                                        .clickable { editingToolId = spec.id }
+                                        .padding(horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Settings", color = Color(cg.textPrimary), fontSize = 11.sp)
+                                }
+
+                                // Remove Tool
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(btnShape)
+                                        .background(Color(cg.secondary))
+                                        .border(1.dp, Color(cg.border), btnShape)
+                                        .clickable {
+                                            val list = prefs.activeMiniToolIds.toMutableList()
+                                            list.removeAt(idx)
+                                            settingsRepo.updatePreferences { it.copy(activeMiniToolIds = list) }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✕", color = Color(cg.textSecondary), fontSize = 11.sp)
                                 }
                             }
                         }
+                        if (idx < prefs.activeMiniToolIds.lastIndex) {
+                            HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+                        }
                     }
+                }
+            }
 
-                    Surface(modifier = Modifier.fillMaxWidth().height(0.5.dp), color = Color(cg.border)) {}
+            // 4. Available Tools to Add
+            val inactiveSpecs = ALL_MINI_TOOL_SPECS.filter { it.id !in prefs.activeMiniToolIds }
+            if (inactiveSpecs.isNotEmpty()) {
+                Text("Available Tools", color = Color(cg.textSecondary), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(boxShape)
+                        .background(Color(cg.surface))
+                        .border(1.dp, Color(cg.border), boxShape)
+                ) {
+                    val canAdd = prefs.activeMiniToolIds.size < prefs.toolSlotsLimit
+                    inactiveSpecs.forEachIndexed { idx, spec ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(itemShape)
+                                        .background(Color(cg.bgSolid))
+                                        .border(1.dp, Color(cg.border), itemShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(spec.glyph, color = Color(cg.textSecondary), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+                                Column {
+                                    Text(spec.name, color = Color(cg.textPrimary), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                    Text(spec.desc, color = Color(cg.textSecondary), fontSize = 11.sp)
+                                }
+                            }
 
-                    // Radial Rings Toggle
+                            Box(
+                                modifier = Modifier
+                                    .clip(btnShape)
+                                    .background(if (canAdd) cg.primaryBrush() else SolidColor(Color(cg.secondary)))
+                                    .clickable(enabled = canAdd) {
+                                        settingsRepo.updatePreferences {
+                                            it.copy(activeMiniToolIds = it.activeMiniToolIds + spec.id)
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = if (canAdd) "+ Add" else "Full",
+                                    color = if (canAdd) Color(cg.primaryText) else Color(cg.textSecondary),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        if (idx < inactiveSpecs.lastIndex) {
+                            HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+                        }
+                    }
+                }
+            }
+        } else {
+            // ================= COMMAND DECK MANAGER =================
+            Text("Command Deck Modules", color = Color(cg.textSecondary), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(boxShape)
+                    .background(Color(cg.surface))
+                    .border(1.dp, Color(cg.border), boxShape)
+            ) {
+                COMMAND_DECK_MODULES.forEachIndexed { idx, (modId, title, desc) ->
+                    val enabled = prefs.commandDeckModuleStates[modId] ?: true
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text("Radial Progress Rings", color = Color(cg.textPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("Show arc around Volume & Brightness", color = Color(cg.textSecondary), fontSize = 12.sp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(title, color = Color(cg.textPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(desc, color = Color(cg.textSecondary), fontSize = 12.sp)
                         }
-
                         Switch(
-                            checked = prefs.showRadialRings,
-                            onCheckedChange = { checked -> settingsRepo.updatePreferences { it.copy(showRadialRings = checked) } },
+                            checked = enabled,
+                            onCheckedChange = { checked ->
+                                val nextMap = prefs.commandDeckModuleStates.toMutableMap()
+                                nextMap[modId] = checked
+                                settingsRepo.updatePreferences { it.copy(commandDeckModuleStates = nextMap) }
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color(cg.primaryText),
                                 checkedTrackColor = Color(cg.primarySolid),
@@ -260,80 +528,112 @@ fun DeckEditorPage(
                             )
                         )
                     }
-                }
-            }
-
-            // Tools Checklist
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(prefs.globalRadiusDp.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(cg.surface)),
-                border = BorderStroke(0.5.dp, Color(cg.border))
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("ACTIVE TOOLS (${prefs.activeMiniToolIds.size}/${prefs.toolSlotsLimit})", color = Color(cg.textSecondary), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-
-                    ToolItemRow("VOL", "Volume Stream", "Media or ring stream dial", true, cg)
-                    ToolItemRow("LUX", "Brightness Level", "Display level & auto toggle", true, cg)
-                    ToolItemRow("▶", "Media Controls", "Play, pause, and skip track", true, cg)
-                    ToolItemRow("⊞", "Command Deck", "Expand to full 360dp deck", true, cg)
-                }
-            }
-        } else {
-            // SUBPAGE B: COMMAND DECK MANAGER
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(prefs.globalRadiusDp.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(cg.surface)),
-                border = BorderStroke(0.5.dp, Color(cg.border))
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("COMMAND DECK MODULES (360DP)", color = Color(cg.textSecondary), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-
-                    ToolItemRow("AUD", "Audio Streams & Switcher", "Per-stream sliders & system output switcher", true, cg)
-                    ToolItemRow("NET", "Connectivity Panel", "Wi-Fi & Bluetooth panel shortcuts", true, cg)
-                    ToolItemRow("NOTE", "Scratchpad", "Quick notes with auto-save", true, cg)
-                    ToolItemRow("CLIP", "Clipboard Vault", "Encrypted clip history & pinned items", true, cg)
-                    ToolItemRow("LOUPE", "Screen Studio", "One-frame MediaProjection eyedropper", true, cg)
-                    ToolItemRow("SEARCH", "App Search", "In-memory app & settings launcher", true, cg)
+                    if (idx < COMMAND_DECK_MODULES.lastIndex) {
+                        HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+                    }
                 }
             }
         }
     }
-}
 
-@Composable
-private fun ToolItemRow(iconText: String, title: String, subtitle: String, isEnabled: Boolean, cg: ColorGraph) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(cg.surfaceRaised),
-        border = BorderStroke(0.5.dp, Color(cg.border))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color(cg.secondary),
-                    border = BorderStroke(1.dp, Color(cg.border))
+    // Per-Tool Settings Modal
+    editingToolId?.let { toolId ->
+        val spec = ALL_MINI_TOOL_SPECS.firstOrNull { it.id == toolId }
+        val currentMap = prefs.miniToolSettings[toolId] ?: defaultMiniToolSettings()[toolId].orEmpty()
+
+        Dialog(onDismissRequest = { editingToolId = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(boxShape)
+                    .background(Color(cg.surface))
+                    .border(1.dp, Color(cg.border), boxShape)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(iconText, color = Color(cg.textPrimary), fontSize = 10.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+                    Column {
+                        Text("${spec?.name ?: "Tool"} Settings", color = Color(cg.textPrimary), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text(spec?.desc ?: "", color = Color(cg.textSecondary), fontSize = 11.sp)
+                    }
+                    Text(
+                        text = "✕",
+                        color = Color(cg.textSecondary),
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable { editingToolId = null }.padding(4.dp)
+                    )
+                }
+                HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+
+                currentMap.entries.forEachIndexed { idx, (k, v) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(k, color = Color(cg.textPrimary), fontSize = 13.sp)
+
+                        if (v == "true" || v == "false") {
+                            Switch(
+                                checked = v == "true",
+                                onCheckedChange = { checked ->
+                                    val updatedOuter = prefs.miniToolSettings.toMutableMap()
+                                    val updatedInner = currentMap.toMutableMap()
+                                    updatedInner[k] = checked.toString()
+                                    updatedOuter[toolId] = updatedInner
+                                    settingsRepo.updatePreferences { it.copy(miniToolSettings = updatedOuter) }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(cg.primaryText),
+                                    checkedTrackColor = Color(cg.primarySolid)
+                                )
+                            )
+                        } else {
+                            var textVal by remember(v) { mutableStateOf(v) }
+                            Box(
+                                modifier = Modifier
+                                    .width(120.dp)
+                                    .clip(btnShape)
+                                    .background(Color(cg.secondary))
+                                    .border(1.dp, Color(cg.border), btnShape)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                BasicTextField(
+                                    value = textVal,
+                                    onValueChange = { newText ->
+                                        textVal = newText
+                                        val updatedOuter = prefs.miniToolSettings.toMutableMap()
+                                        val updatedInner = currentMap.toMutableMap()
+                                        updatedInner[k] = newText
+                                        updatedOuter[toolId] = updatedInner
+                                        settingsRepo.updatePreferences { it.copy(miniToolSettings = updatedOuter) }
+                                    },
+                                    textStyle = TextStyle(color = Color(cg.textPrimary), fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                                    cursorBrush = SolidColor(Color(cg.primarySolid))
+                                )
+                            }
+                        }
+                    }
+                    if (idx < currentMap.size - 1) {
+                        HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+                    }
                 }
 
-                Column {
-                    Text(title, color = Color(cg.textPrimary), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text(subtitle, color = Color(cg.textSecondary), fontSize = 11.sp)
+                HorizontalDivider(color = Color(cg.border), thickness = 1.dp)
+                Row(modifier = Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.End) {
+                    Box(
+                        modifier = Modifier
+                            .clip(btnShape)
+                            .background(cg.primaryBrush())
+                            .clickable { editingToolId = null }
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                    ) {
+                        Text("Done", color = Color(cg.primaryText), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
             }
-
-            Checkbox(
-                checked = isEnabled,
-                onCheckedChange = {},
-                colors = CheckboxDefaults.colors(checkedColor = Color(cg.primarySolid), checkmarkColor = Color(cg.primaryText), uncheckedColor = Color(cg.border))
-            )
         }
     }
 }

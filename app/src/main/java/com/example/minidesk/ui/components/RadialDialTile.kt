@@ -8,7 +8,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -25,9 +27,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -35,6 +41,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.minidesk.data.settings.ToolShape
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,6 +52,15 @@ fun RadialDialTile(
     currentValue: Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    shape: Shape = CircleShape,
+    toolShapeType: ToolShape = ToolShape.CIRCLE,
+    cornerRadiusDp: Float = 14f,
+    showRing: Boolean = true,
+    surfaceColor: Color = Color(0xFF1E1E1E),
+    borderColor: Color = Color(0xFF282828),
+    progressBrush: Brush = SolidColor(Color.White),
+    contentColor: Color = Color.White,
+    onTap: (() -> Unit)? = null,
     icon: @Composable () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -53,7 +69,6 @@ fun RadialDialTile(
     var localValue by remember { mutableFloatStateOf(currentValue) }
     var releaseJob by remember { mutableStateOf<Job?>(null) }
 
-    // Synchronize from external currentValue ONLY when user is NOT dragging
     LaunchedEffect(currentValue) {
         if (!isScrubbing) {
             localValue = currentValue
@@ -63,9 +78,18 @@ fun RadialDialTile(
     Box(
         modifier = modifier
             .size(46.dp)
-            .clip(CircleShape)
-            .background(Color(0xFF1E1E1E))
-            .border(1.dp, Color(0xFF282828), CircleShape)
+            .clip(shape)
+            .background(surfaceColor)
+            .border(1.dp, borderColor, shape)
+            .then(
+                if (onTap != null) {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onTap
+                    )
+                } else Modifier
+            )
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = {
@@ -75,7 +99,7 @@ fun RadialDialTile(
                     onDragEnd = {
                         releaseJob?.cancel()
                         releaseJob = coroutineScope.launch {
-                            delay(1000L)
+                            delay(900L)
                             isScrubbing = false
                         }
                     },
@@ -96,44 +120,66 @@ fun RadialDialTile(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val trackWidth = 2.5.dp.toPx()
-            val fillWidth = 3.dp.toPx()
-            val inset = fillWidth / 2f
-            val sizePx = size.minDimension - fillWidth
+        if (showRing) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val trackWidth = 2.2.dp.toPx()
+                val fillWidth = 2.6.dp.toPx()
+                val inset = fillWidth / 2f
+                val sizePx = size.minDimension - fillWidth
 
-            // Background track circle
-            drawCircle(
-                color = Color(0xFF282828),
-                radius = size.minDimension / 2f - inset,
-                style = Stroke(trackWidth)
-            )
-
-            // Filled progress arc
-            val sweepAngle = (localValue.coerceIn(0f, 100f) / 100f) * 360f
-            if (sweepAngle > 0f) {
-                drawArc(
-                    color = Color.White,
-                    startAngle = -90f,
-                    sweepAngle = sweepAngle,
-                    useCenter = false,
-                    topLeft = Offset(inset, inset),
-                    size = Size(sizePx, sizePx),
-                    style = Stroke(fillWidth, cap = StrokeCap.Round)
-                )
+                if (toolShapeType == ToolShape.CIRCLE) {
+                    drawCircle(
+                        color = borderColor,
+                        radius = size.minDimension / 2f - inset,
+                        style = Stroke(trackWidth)
+                    )
+                    val sweepAngle = (localValue.coerceIn(0f, 100f) / 100f) * 360f
+                    if (sweepAngle > 0f) {
+                        drawArc(
+                            brush = progressBrush,
+                            startAngle = -90f,
+                            sweepAngle = sweepAngle,
+                            useCenter = false,
+                            topLeft = Offset(inset, inset),
+                            size = Size(sizePx, sizePx),
+                            style = Stroke(fillWidth, cap = StrokeCap.Round)
+                        )
+                    }
+                } else {
+                    // Bottom progress indicator bar inside squircle/global shapes for clean visual alignment
+                    val barHeight = 3.dp.toPx()
+                    val padH = 8.dp.toPx()
+                    val availW = size.width - padH * 2f
+                    val y = size.height - 6.dp.toPx()
+                    drawRoundRect(
+                        color = borderColor,
+                        topLeft = Offset(padH, y),
+                        size = Size(availW, barHeight),
+                        cornerRadius = CornerRadius(barHeight / 2f)
+                    )
+                    val fillW = availW * (localValue.coerceIn(0f, 100f) / 100f)
+                    if (fillW > 0f) {
+                        drawRoundRect(
+                            brush = progressBrush,
+                            topLeft = Offset(padH, y),
+                            size = Size(fillW, barHeight),
+                            cornerRadius = CornerRadius(barHeight / 2f)
+                        )
+                    }
+                }
             }
         }
 
         AnimatedContent(
             targetState = isScrubbing,
-            transitionSpec = { fadeIn(tween(150)) togetherWith fadeOut(tween(150)) },
+            transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(140)) },
             label = "DialMorph"
         ) { scrubbing ->
             if (scrubbing) {
                 Text(
                     text = "${localValue.roundToInt()}%",
-                    color = Color.White,
-                    fontSize = 12.sp,
+                    color = contentColor,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )

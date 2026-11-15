@@ -2,11 +2,22 @@ package com.example.minidesk.data.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 enum class TriggerShape { EDGE_BAR, FLOATING_PILL, FLOATING_PUCK, SPLIT_BAR, ORGANIC_TEARDROP }
 enum class InnerIndicator { NONE, LINE, DOT }
@@ -32,7 +43,36 @@ data class ColorGraph(
     val pGradStart: Long = 0xFFFFFFFF,
     val pGradEnd: Long = 0xFFA3A3A3,
     val pGradAngle: Float = 135f
-)
+) {
+    fun backgroundBrush(): Brush = if (bgGradEnabled) {
+        angledLinearGradient(Color(bgGradStart), Color(bgGradEnd), bgGradAngle)
+    } else {
+        SolidColor(Color(bgSolid))
+    }
+
+    fun surfaceBrush(): Brush = if (bgGradEnabled) {
+        angledLinearGradient(Color(bgGradStart), Color(bgGradEnd), bgGradAngle)
+    } else {
+        SolidColor(Color(surface))
+    }
+
+    fun primaryBrush(): Brush = if (pGradEnabled) {
+        angledLinearGradient(Color(pGradStart), Color(pGradEnd), pGradAngle)
+    } else {
+        SolidColor(Color(primarySolid))
+    }
+}
+
+private fun angledLinearGradient(start: Color, end: Color, angleDeg: Float): Brush {
+    val rad = angleDeg * (PI / 180.0)
+    val dx = cos(rad).toFloat()
+    val dy = sin(rad).toFloat()
+    return Brush.linearGradient(
+        colors = listOf(start, end),
+        start = Offset.Zero,
+        end = Offset(dx * 600f, dy * 600f)
+    )
+}
 
 data class MiniDeskPreferences(
     val isFirstRunComplete: Boolean = true,
@@ -44,7 +84,7 @@ data class MiniDeskPreferences(
     val restingOpacity: Float = 0.90f,
     val hapticMode: HapticMode = HapticMode.SUBTLE,
     val isRightEdge: Boolean = true,
-    val yPositionPercent: Float = 0.50f, // 50% Center
+    val yPositionPercent: Float = 0.50f,
     val edgeGapDp: Int = 10,
     val handleWidthDp: Int = 12,
     val handleHeightDp: Int = 76,
@@ -62,6 +102,7 @@ data class MiniDeskPreferences(
     val toolShape: ToolShape = ToolShape.CIRCLE,
     val showRadialRings: Boolean = true,
     val activeMiniToolIds: List<String> = listOf("volume", "brightness", "media", "deck_btn"),
+    val miniToolSettings: Map<String, Map<String, String>> = defaultMiniToolSettings(),
     val commandDeckModuleStates: Map<String, Boolean> = mapOf(
         "audio" to true,
         "connectivity" to true,
@@ -74,7 +115,6 @@ data class MiniDeskPreferences(
     val enableFreeformLauncher: Boolean = false,
     val blacklistedPackages: Set<String> = emptySet()
 ) {
-    // Backwards compatibility properties
     val notchEdgeRight: Boolean get() = isRightEdge
     val notchYPercentage: Float get() = yPositionPercent
     val notchWidthDp: Int get() = handleWidthDp
@@ -82,7 +122,27 @@ data class MiniDeskPreferences(
     val notchStyle: String get() = triggerShape.name
     val handleOpacity: Float get() = restingOpacity
     val xOffsetDp: Int get() = edgeGapDp
+
+    fun resolveToolShape(): Shape = when (toolShape) {
+        ToolShape.CIRCLE -> CircleShape
+        ToolShape.SQUIRCLE -> RoundedCornerShape(14.dp)
+        ToolShape.GLOBAL -> RoundedCornerShape((globalRadiusDp * 0.625f).coerceIn(4f, 23f).dp)
+    }
+
+    fun boxCornerShape(): RoundedCornerShape = RoundedCornerShape(globalRadiusDp.dp)
+    fun buttonCornerShape(): RoundedCornerShape = RoundedCornerShape((globalRadiusDp * 0.625f).coerceAtLeast(4f).dp)
 }
+
+fun defaultMiniToolSettings(): Map<String, Map<String, String>> = mapOf(
+    "volume" to mapOf("Stream" to "Media", "Step Size" to "5%", "Tap to Mute" to "false"),
+    "brightness" to mapOf("Mode" to "Manual", "Step Size" to "10%", "Double Tap Auto" to "true"),
+    "media" to mapOf("Swipe to Skip" to "true", "Target App" to "Active Session"),
+    "deck_btn" to mapOf("Default Tab" to "Bento Grid", "Remember Last Tab" to "true"),
+    "torch" to mapOf("Auto-Off" to "Never", "Double Tap SOS" to "false"),
+    "timer" to mapOf("Default Preset" to "5 min", "Exact Alarm" to "true"),
+    "eyedropper" to mapOf("Format" to "HEX", "Auto-Copy" to "true"),
+    "rotate" to mapOf("Toast on Toggle" to "true")
+)
 
 class MiniDeskSettingsRepository private constructor(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("minidesk_settings", Context.MODE_PRIVATE)
@@ -119,7 +179,6 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
         val shizuku = prefs.getBoolean("use_shizuku", false)
         val freeform = prefs.getBoolean("enable_freeform_launcher", false)
 
-        // Color Graph tokens
         val bgSolid = prefs.getLong("cg_bg_solid", 0xFF000000)
         val surface = prefs.getLong("cg_surface", 0xFF0B0B0B)
         val surfaceRaised = prefs.getLong("cg_surface_raised", 0xFF141414)
@@ -150,9 +209,7 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
         val blacklistSet = mutableSetOf<String>()
         try {
             val arr = JSONArray(blacklistJson)
-            for (i in 0 until arr.length()) {
-                blacklistSet.add(arr.getString(i))
-            }
+            for (i in 0 until arr.length()) blacklistSet.add(arr.getString(i))
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -161,15 +218,35 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
         val activeToolsList = mutableListOf<String>()
         try {
             val arr = JSONArray(activeToolsJson)
-            for (i in 0 until arr.length()) {
-                activeToolsList.add(arr.getString(i))
-            }
+            for (i in 0 until arr.length()) activeToolsList.add(arr.getString(i))
         } catch (e: Exception) {
             activeToolsList.addAll(listOf("volume", "brightness", "media", "deck_btn"))
         }
 
+        val toolSettingsMap = defaultMiniToolSettings().mapValues { it.value.toMutableMap() }.toMutableMap()
+        val toolSettingsJson = prefs.getString("mini_tool_settings", "{}") ?: "{}"
+        try {
+            val rootObj = JSONObject(toolSettingsJson)
+            val toolKeys = rootObj.keys()
+            while (toolKeys.hasNext()) {
+                val tId = toolKeys.next()
+                val subObj = rootObj.getJSONObject(tId)
+                val subMap = toolSettingsMap.getOrPut(tId) { mutableMapOf() }
+                val settingKeys = subObj.keys()
+                while (settingKeys.hasNext()) {
+                    val sKey = settingKeys.next()
+                    subMap[sKey] = subObj.getString(sKey)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         val cmdDeckModulesJson = prefs.getString("cmd_deck_modules", "{}") ?: "{}"
-        val cmdDeckMap = mutableMapOf<String, Boolean>()
+        val cmdDeckMap = mutableMapOf(
+            "audio" to true, "connectivity" to true, "scratchpad" to true,
+            "clipboard" to true, "eyedropper_mod" to true, "search" to true
+        )
         try {
             val obj = JSONObject(cmdDeckModulesJson)
             val keys = obj.keys()
@@ -178,7 +255,7 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
                 cmdDeckMap[k] = obj.getBoolean(k)
             }
         } catch (e: Exception) {
-            cmdDeckMap.putAll(mapOf("audio" to true, "connectivity" to true, "scratchpad" to true, "clipboard" to true, "eyedropper_mod" to true, "search" to true))
+            e.printStackTrace()
         }
 
         val triggerShape = try { TriggerShape.valueOf(triggerShapeStr) } catch (e: Exception) { TriggerShape.FLOATING_PILL }
@@ -215,6 +292,7 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
             toolShape = toolShape,
             showRadialRings = radialRings,
             activeMiniToolIds = activeToolsList,
+            miniToolSettings = toolSettingsMap,
             commandDeckModuleStates = cmdDeckMap,
             useShizuku = shizuku,
             enableFreeformLauncher = freeform,
@@ -232,6 +310,13 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
 
         val arrTools = JSONArray()
         newPrefs.activeMiniToolIds.forEach { arrTools.put(it) }
+
+        val objToolSettings = JSONObject()
+        newPrefs.miniToolSettings.forEach { (toolId, map) ->
+            val sub = JSONObject()
+            map.forEach { (k, v) -> sub.put(k, v) }
+            objToolSettings.put(toolId, sub)
+        }
 
         val objCmdDeck = JSONObject()
         newPrefs.commandDeckModuleStates.forEach { (k, v) -> objCmdDeck.put(k, v) }
@@ -265,11 +350,11 @@ class MiniDeskSettingsRepository private constructor(context: Context) {
             .putString("tool_shape", newPrefs.toolShape.name)
             .putBoolean("show_radial_rings", newPrefs.showRadialRings)
             .putString("active_mini_tools", arrTools.toString())
+            .putString("mini_tool_settings", objToolSettings.toString())
             .putString("cmd_deck_modules", objCmdDeck.toString())
             .putBoolean("use_shizuku", newPrefs.useShizuku)
             .putBoolean("enable_freeform_launcher", newPrefs.enableFreeformLauncher)
             .putString("blacklisted_packages", arrBlacklist.toString())
-            // Color Graph
             .putLong("cg_bg_solid", cg.bgSolid)
             .putLong("cg_surface", cg.surface)
             .putLong("cg_surface_raised", cg.surfaceRaised)
